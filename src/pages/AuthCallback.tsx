@@ -29,10 +29,49 @@ export default function AuthCallback() {
         return
       }
 
+      const url = new URL(window.location.href)
+      const hashParams = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash)
+      const code = url.searchParams.get('code') ?? hashParams.get('code')
+      const accessToken = hashParams.get('access_token')
+      const refreshToken = hashParams.get('refresh_token')
+
       const timer = window.setTimeout(() => {
         if (cancelled) return
         setTimeoutReached(true)
       }, 15000)
+
+      if (accessToken && refreshToken) {
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        })
+        if (setSessionError) {
+          if (cancelled) return
+          setError(setSessionError.message)
+          return
+        }
+        if (cancelled) return
+        window.clearTimeout(timer)
+        url.hash = ''
+        window.history.replaceState({}, document.title, url.toString())
+        navigate('/dashboard', { replace: true })
+        return
+      }
+
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+        if (exchangeError) {
+          if (cancelled) return
+          setError(exchangeError.message)
+          return
+        }
+        if (cancelled) return
+        window.clearTimeout(timer)
+        url.searchParams.delete('code')
+        window.history.replaceState({}, document.title, url.toString())
+        navigate('/dashboard', { replace: true })
+        return
+      }
 
       const { data: initial } = await supabase.auth.getSession()
       if (cancelled) return
